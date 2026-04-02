@@ -1,18 +1,12 @@
 # n8n-nodes-brainx
 
-This is an n8n community node. It lets you use _app/service name_ in your n8n workflows.
+This is an n8n community node. It lets you use [brainX](https://www.brainx.app/) in your n8n workflows.
 
-_App/service name_ is _one or two sentences describing the service this node integrates with_.
+brainX is a CRM platform by brainformatik. This node allows you to interact with brainX records directly from n8n.
 
 [n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/sustainable-use-license/) workflow automation platform.
 
-[Installation](#installation)
-[Operations](#operations)
-[Credentials](#credentials)
-[Compatibility](#compatibility)
-[Usage](#usage)
-[Resources](#resources)
-[Version history](#version-history)
+[Installation](#installation) | [Operations](#operations) | [Credentials](#credentials) | [Compatibility](#compatibility) | [Resources](#resources) | [Version history](#version-history)
 
 ## Installation
 
@@ -20,27 +14,45 @@ Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes
 
 ## Operations
 
-_List the operations supported by your node._
+All operations work against dynamically loaded **modules** (entities) from your brainX instance.
+
+- **Create** - Create a new record. Required fields are enforced based on module metadata.
+- **Delete** - Delete a record by ID.
+- **Get** - Retrieve a single record by ID, or list all records if no ID is given.
+  - Options: Include Deleted, Include File Content
+- **Search** - Search and list records with optional filters, sorting, and field selection.
+  - **Filters** - Add filter conditions with a field selector and operators: Contains (LIKE), Equals (Exact), Greater Than, Less Than, Not Equals, Not Equals (Exact). Supports multiple values per field (pipe-separated) and combining conditions with OR.
+  - **Sort Order** - Sort by one or more fields in ascending or descending order.
+  - **Fields to Return** - Select specific fields to include in the response.
+  - Options: Include Deleted, Include File Content, Offset, Filter Combine With OR
+- **Update** - Update an existing record by ID. No required fields are enforced.
+
+Field types (text, picklist, date, boolean, references) are automatically mapped from brainX metadata, with dropdown options loaded for picklist and reference fields.
 
 ## Credentials
 
-_If users need to authenticate with the app/service, provide details here. You should include prerequisites (such as signing up with the service), available authentication methods, and how to set them up._
+This node supports two authentication methods:
+
+- **API Password** - Authenticate using your brainX username and API password.
+- **Basic Auth** - Authenticate using your brainX username and user password.
+
+Both methods require:
+
+1. **Base URL** - The URL of your brainX instance (e.g. `https://your-instance.brainx.app`)
+2. **Username** - Your brainX username
+3. **Password** - Either your API password or user password, depending on the method chosen
 
 ## Compatibility
 
-_State the minimum n8n version, as well as which versions you test against. You can also include any known version incompatibility issues._
-
-## Usage
-
-_This is an optional section. Use it to help users with any difficult or confusing aspects of the node._
-
-_By the time users are looking for community nodes, they probably already know n8n basics. But if you expect new users, you can link to the [Try it out](https://docs.n8n.io/try-it-out/) documentation to help them get started._
+Tested with n8n version 1.x. Requires Node.js 18+ (uses native `fetch`).
 
 ## Resources
 
 - [n8n community nodes documentation](https://docs.n8n.io/integrations/#community-nodes)
-- _Link to app/service documentation._
+- [brainX website](https://www.brainx.app/)
 
 ## Version history
 
-_This is another optional section. If your node has multiple versions, include a short description of available versions and what changed, as well as any compatibility impact._
+### 0.1.0
+
+Initial release with Create, Delete, Get, Search, and Update operations.
