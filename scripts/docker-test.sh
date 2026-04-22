@@ -12,6 +12,8 @@ set -euo pipefail
 # Workflow/user data is persisted in .n8n-docker/data across restarts.
 # Stop with Ctrl+C; the container is removed automatically (--rm).
 
+trap 'echo "!! Failed at line $LINENO (exit $?)" >&2' ERR
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$ROOT/.n8n-docker"
 CUSTOM="$WORK/custom"
@@ -20,14 +22,25 @@ CONTAINER="n8n-nodes-brainx-test"
 PORT="${N8N_PORT:-5678}"
 IMAGE="${N8N_IMAGE:-docker.n8n.io/n8nio/n8n}"
 
+NPM_FLAGS=(--no-audit --no-fund)
+if [ "$(id -u)" = "0" ]; then
+  # npm refuses to run install scripts as root unless told it's ok.
+  NPM_FLAGS+=(--unsafe-perm)
+fi
+
 echo ">> Building node..."
 cd "$ROOT"
 npm run build
 
 echo ">> Packing node..."
 mkdir -p "$CUSTOM" "$DATA"
-TARBALL="$(npm pack --silent --pack-destination "$WORK")"
-TARBALL_PATH="$WORK/$TARBALL"
+(cd "$ROOT" && npm pack "${NPM_FLAGS[@]}" --pack-destination "$WORK" >/dev/null)
+TARBALL_PATH="$(/bin/ls -t "$WORK"/*.tgz | head -n1)"
+if [ ! -f "$TARBALL_PATH" ]; then
+  echo "!! npm pack did not produce a tarball in $WORK" >&2
+  exit 1
+fi
+echo "   tarball: $TARBALL_PATH"
 
 echo ">> Installing node into $CUSTOM..."
 cd "$CUSTOM"
@@ -36,7 +49,7 @@ if [ ! -f package.json ]; then
 { "name": "n8n-custom", "version": "1.0.0", "private": true }
 EOF
 fi
-npm install --silent --no-audit --no-fund "$TARBALL_PATH"
+npm install "${NPM_FLAGS[@]}" "$TARBALL_PATH"
 rm -f "$TARBALL_PATH"
 
 echo ">> Stopping any previous container..."
