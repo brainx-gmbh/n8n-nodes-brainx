@@ -372,7 +372,7 @@ export class BrainX implements INodeType {
 				};
 				return (response.data ?? [])
 					.filter((e) => e.isEntity)
-					.filter((e) => 'Users' !== e.name)
+					.filter((e) => !['Users', 'PlannedActions'].includes(e.name))
 					.filter((e) => !isWrite || !e.isInventory || e.name === 'Potentials')
 					.filter((e) => !isRead || e.name !== 'EmailsLocal')
 					.map((e) => ({ name: e.label, value: e.id }))
