@@ -65,7 +65,10 @@ export class BrainX implements INodeType {
 				name: 'resource',
 				type: 'options',
 				noDataExpression: true,
-				typeOptions: { loadOptionsMethod: 'getEntities' },
+				typeOptions: {
+					loadOptionsMethod: 'getEntities',
+					loadOptionsDependsOn: ['operation'],
+				},
 				default: '',
 				description:
 					'The entity type to work with. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
@@ -360,13 +363,16 @@ export class BrainX implements INodeType {
 	methods = {
 		loadOptions: {
 			async getEntities(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const operation = this.getCurrentNodeParameter('operation') as string;
+				const isWrite = operation === 'create' || operation === 'update';
+
 				const response = (await brainXApiRequest.call(this, 'GET', '/api/metadata/entities')) as {
 					data?: BrainXEntity[];
 				};
 				return (response.data ?? [])
 					.filter((e) => e.isEntity)
 					.filter((e) => 'Users' !== e.name)
-					.filter((e) => !e.isInventory || e.name === 'Potentials')
+					.filter((e) => !isWrite || !e.isInventory || e.name === 'Potentials')
 					.map((e) => ({ name: e.label, value: e.id }))
 					.sort((a, b) => a.name.localeCompare(b.name));
 			},
