@@ -105,22 +105,6 @@ export class BrainX implements INodeType {
 			},
 		],
 		properties: [
-			// ── Resource ──────────────────────────────────────────────────────
-			{
-				displayName: 'Module Name or ID',
-				name: 'resource',
-				type: 'options',
-				noDataExpression: true,
-				typeOptions: {
-					loadOptionsMethod: 'getEntities',
-					loadOptionsDependsOn: ['operation'],
-				},
-				displayOptions: { hide: { operation: ['addRelations', 'getRelations'] } },
-				default: '',
-				description:
-					'The entity type to work with. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
-			},
-
 			// ── Operation ─────────────────────────────────────────────────────
 			{
 				displayName: 'Operation',
@@ -172,6 +156,22 @@ export class BrainX implements INodeType {
 					},
 				],
 				default: 'search',
+			},
+
+			// ── Resource ──────────────────────────────────────────────────────
+			{
+				displayName: 'Module Name or ID',
+				name: 'resource',
+				type: 'options',
+				noDataExpression: true,
+				typeOptions: {
+					loadOptionsMethod: 'getEntities',
+					loadOptionsDependsOn: ['operation'],
+				},
+				displayOptions: { hide: { operation: ['addRelations', 'getRelations'] } },
+				default: '',
+				description:
+					'The entity type to work with. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 
 			// ── Record ID ─────────────────────────────────────────────────────
