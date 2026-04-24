@@ -115,6 +115,7 @@ export class BrainX implements INodeType {
 					loadOptionsMethod: 'getEntities',
 					loadOptionsDependsOn: ['operation'],
 				},
+				displayOptions: { hide: { operation: ['addRelations', 'getRelations'] } },
 				default: '',
 				description:
 					'The entity type to work with. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
@@ -127,6 +128,12 @@ export class BrainX implements INodeType {
 				type: 'options',
 				noDataExpression: true,
 				options: [
+					{
+						name: 'Add Relations',
+						value: 'addRelations',
+						action: 'Add relations to a record',
+						description: 'Relate other records to this record',
+					},
 					{
 						name: 'Create',
 						value: 'create',
@@ -144,6 +151,12 @@ export class BrainX implements INodeType {
 						value: 'get',
 						action: 'Get a record',
 						description: 'Retrieve a record by ID, or list all if no ID given',
+					},
+					{
+						name: 'Get Relations',
+						value: 'getRelations',
+						action: 'Get relations of a record',
+						description: 'List related records grouped by entity',
 					},
 					{
 						name: 'Search',
@@ -166,9 +179,26 @@ export class BrainX implements INodeType {
 				displayName: 'Record ID',
 				name: 'recordId',
 				type: 'string',
-				displayOptions: { show: { operation: ['delete', 'get', 'update'] } },
+				displayOptions: {
+					show: {
+						operation: ['addRelations', 'delete', 'get', 'getRelations', 'update'],
+					},
+				},
 				default: '',
 				description: 'The ID of the record. Leave empty on Get to return all records.',
+			},
+
+			// ── Add Relations: Related Record IDs ─────────────────────────────
+			{
+				displayName: 'Related Record IDs',
+				name: 'relatedRecordIds',
+				type: 'string',
+				displayOptions: { show: { operation: ['addRelations'] } },
+				default: '',
+				required: true,
+				placeholder: '1856, 1857, 1858',
+				description:
+					'Comma-separated list of record IDs to relate to this record. Brain X record IDs are globally unique, so the target entity is inferred by the server.',
 			},
 
 			// ── Fields (resourceMapper) ───────────────────────────────────────
@@ -638,6 +668,43 @@ export class BrainX implements INodeType {
 						body,
 					)) as unknown as BrainXSingleRecordResponse;
 					returnData.push(result.data);
+				} else if (operation === 'getRelations') {
+					const recordId = this.getNodeParameter('recordId', i) as string;
+					const result = await brainXApiRequest.call(
+						this,
+						'GET',
+						`/api/relations/${recordId}`,
+					);
+					// The endpoint returns a bare JSON array; brainXApiRequest casts the
+					// response to IDataObject, but at runtime it's still the array.
+					const relations = (
+						Array.isArray(result) ? result : ((result.data as unknown[]) ?? [])
+					) as IDataObject[];
+					returnData.push(...relations);
+				} else if (operation === 'addRelations') {
+					const recordId = this.getNodeParameter('recordId', i) as string;
+					const idsRaw = this.getNodeParameter('relatedRecordIds', i) as string;
+					const records = idsRaw
+						.split(',')
+						.map((s) => s.trim())
+						.filter((s) => s.length > 0)
+						.map((s) => Number.parseInt(s, 10))
+						.filter((n) => Number.isFinite(n));
+
+					if (!records.length) {
+						throw new NodeOperationError(
+							this.getNode(),
+							'Related Record IDs must contain at least one numeric ID',
+						);
+					}
+
+					const result = await brainXApiRequest.call(
+						this,
+						'POST',
+						`/api/relations/${recordId}`,
+						{ records },
+					);
+					returnData.push(result);
 				}
 			} catch (error) {
 				if (this.continueOnFail()) {
