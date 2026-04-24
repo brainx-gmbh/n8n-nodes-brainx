@@ -108,6 +108,32 @@ async function getEntityIdByName(
 	return (response.data ?? []).find((e) => e.name === entityName)?.id;
 }
 
+async function getEntityNameById(
+	this: BrainXContext,
+	entityId: number,
+): Promise<string | undefined> {
+	const response = (await brainXApiRequest.call(this, 'GET', '/api/metadata/entities')) as {
+		data?: BrainXEntity[];
+	};
+	return (response.data ?? []).find((e) => e.id === entityId)?.name;
+}
+
+// ─── Forced Required Fields ───────────────────────────────────────────────────
+// Some modules have fields the API accepts only when provided but does not
+// flag as required in its metadata. Keyed by entity name (stable across tenants).
+
+const FORCED_REQUIRED_FIELDS: Record<string, string[]> = {
+	Potentials: ['record_currency_id', 'record_language', 'hdnTaxType', 'basic_discount'],
+};
+
+export async function getForcedRequiredFieldsForEntity(
+	this: BrainXContext,
+	entityId: number,
+): Promise<string[]> {
+	const name = await getEntityNameById.call(this, entityId);
+	return name ? (FORCED_REQUIRED_FIELDS[name] ?? []) : [];
+}
+
 // ─── Token Cache ─────────────────────────────────────────────────────────────
 // Keyed by baseUrl + username so each user gets one token reused across calls.
 // Kept short so the cached token is unlikely to outlive its server-side TTL;
@@ -345,9 +371,16 @@ export async function validateRequiredFields(
 	body: IDataObject,
 ): Promise<void> {
 	const fields = await fetchFields.call(this, entityId);
-	const missing = fields
-		.filter((f) => f.required && !(f.name in body))
-		.map((f) => f.label ?? f.name);
+	const forced = new Set(await getForcedRequiredFieldsForEntity.call(this, entityId));
+
+	const requiredNames = new Set<string>([
+		...fields.filter((f) => f.required).map((f) => f.name),
+		...forced,
+	]);
+
+	const missing = Array.from(requiredNames)
+		.filter((name) => !(name in body))
+		.map((name) => fields.find((f) => f.name === name)?.label ?? name);
 
 	if (missing.length > 0) {
 		throw new NodeOperationError(this.getNode(), `Missing required fields: ${missing.join(', ')}`);

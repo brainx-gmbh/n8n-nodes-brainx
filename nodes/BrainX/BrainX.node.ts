@@ -15,6 +15,7 @@ import {
 	BrainXEntity,
 	BrainXSingleRecordResponse,
 	fetchFields,
+	getForcedRequiredFieldsForEntity,
 	getPicklistOptionsForMapper,
 	isEditable,
 	mapBrainXType,
@@ -399,12 +400,16 @@ export class BrainX implements INodeType {
 				const isCreate = operation === 'create';
 
 				const rawFields = await fetchFields.call(this, entityId);
+				const forcedRequired = new Set(
+					await getForcedRequiredFieldsForEntity.call(this, entityId),
+				);
 				const mapperFields: ResourceMapperField[] = [];
 
 				for (const f of rawFields) {
-					if (!isEditable(f) && !(isCreate && f.required)) continue;
+					const forced = forcedRequired.has(f.name);
+					if (!isEditable(f) && !(isCreate && (f.required || forced))) continue;
 
-					const isRequired = isCreate && (f.required ?? false);
+					const isRequired = isCreate && ((f.required ?? false) || forced);
 					const mappedField: ResourceMapperField = {
 						id: f.name,
 						displayName: f.label || f.name,
@@ -612,6 +617,18 @@ function buildRawQs(conditions: FilterCondition[], sortFields: SortField[]): str
 
 // ─── Build Request Body from resourceMapper ───────────────────────────────────
 
+// n8n's dateTime picker emits "YYYY-MM-DDTHH:mm:ss[.sss]" without a timezone
+// designator, which brainX rejects as non-ISO8601. Append 'Z' (treat as UTC)
+// when no TZ is present. Values that already include Z or ±HH:MM pass through.
+const BARE_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/;
+
+function normalizeValue(value: unknown): unknown {
+	if (typeof value === 'string' && BARE_DATETIME_RE.test(value)) {
+		return `${value}Z`;
+	}
+	return value;
+}
+
 function buildBody(ctx: IExecuteFunctions, i: number, operation: string): IDataObject {
 	const paramName = operation === 'create' ? 'createFields' : 'updateFields';
 	const fieldsToSend = ctx.getNodeParameter(paramName, i) as {
@@ -623,7 +640,7 @@ function buildBody(ctx: IExecuteFunctions, i: number, operation: string): IDataO
 
 	for (const [key, value] of Object.entries(values)) {
 		if (value !== null && value !== undefined) {
-			body[key] = value as IDataObject[string];
+			body[key] = normalizeValue(value) as IDataObject[string];
 		}
 	}
 
