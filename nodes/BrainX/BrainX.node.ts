@@ -38,27 +38,9 @@ export class BrainX implements INodeType {
 			{
 				name: 'brainXApi',
 				required: true,
-				displayOptions: { show: { authentication: ['apiPassword'] } },
-			},
-			{
-				name: 'brainXBasicApi',
-				required: true,
-				displayOptions: { show: { authentication: ['basicAuth'] } },
 			},
 		],
 		properties: [
-			// ── Authentication ────────────────────────────────────────────────
-			{
-				displayName: 'Authentication',
-				name: 'authentication',
-				type: 'options',
-				options: [
-					{ name: 'API Password', value: 'apiPassword' },
-					{ name: 'Basic Auth', value: 'basicAuth' },
-				],
-				default: 'apiPassword',
-			},
-
 			// ── Resource ──────────────────────────────────────────────────────
 			{
 				displayName: 'Module Name or ID',

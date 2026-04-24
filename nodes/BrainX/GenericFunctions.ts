@@ -108,16 +108,6 @@ async function getEntityIdByName(
 	return (response.data ?? []).find((e) => e.name === entityName)?.id;
 }
 
-// ─── Credential Type Helper ───────────────────────────────────────────────────
-
-function getCredentialType(this: BrainXContext): 'brainXApi' | 'brainXBasicApi' {
-	const auth =
-		'getCurrentNodeParameter' in this
-			? (this as ILoadOptionsFunctions).getCurrentNodeParameter('authentication')
-			: (this as IExecuteFunctions).getNodeParameter('authentication', 0);
-	return (auth as string | undefined) === 'basicAuth' ? 'brainXBasicApi' : 'brainXApi';
-}
-
 // ─── Token Cache ─────────────────────────────────────────────────────────────
 // Keyed by baseUrl + username so each user gets one token reused across calls.
 // Refreshed 5 min before assumed expiry to avoid mid-flight invalidation.
@@ -135,19 +125,14 @@ const getCache = new Map<string, Cached<IDataObject>>();
 // Uses fetch directly (same as credentials) to avoid n8n context limitations
 // in both IExecuteFunctions and ILoadOptionsFunctions.
 
-async function fetchAccessToken(
-	baseUrl: string,
-	credentials: IDataObject,
-	isBasicAuth: boolean,
-): Promise<string> {
-	const authPayload = isBasicAuth
-		? { user: String(credentials.username), password: String(credentials.password) }
-		: { user: String(credentials.username), apiPassword: String(credentials.apiPassword) };
-
+async function fetchAccessToken(baseUrl: string, credentials: IDataObject): Promise<string> {
 	const authRes = await fetch(`${baseUrl}/api/auth`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/vnd.brainformatik.crm-v2+json' },
-		body: JSON.stringify(authPayload),
+		body: JSON.stringify({
+			user: String(credentials.username),
+			apiPassword: String(credentials.apiPassword),
+		}),
 	});
 
 	if (!authRes.ok) {
@@ -163,16 +148,12 @@ async function fetchAccessToken(
 	return token;
 }
 
-async function getAccessToken(
-	baseUrl: string,
-	credentials: IDataObject,
-	isBasicAuth: boolean,
-): Promise<string> {
+async function getAccessToken(baseUrl: string, credentials: IDataObject): Promise<string> {
 	const cacheKey = `${baseUrl}\x00${String(credentials.username)}`;
 	const cached = tokenCache.get(cacheKey);
 	if (cached && Date.now() < cached.expiresAt) return cached.data;
 
-	const token = await fetchAccessToken(baseUrl, credentials, isBasicAuth);
+	const token = await fetchAccessToken(baseUrl, credentials);
 	tokenCache.set(cacheKey, { data: token, expiresAt: Date.now() + TOKEN_TTL_MS });
 	return token;
 }
@@ -185,22 +166,7 @@ export async function brainXApiRequest(
 	qs: IDataObject = {},
 	rawQs?: string,
 ): Promise<IDataObject> {
-	const primaryType = getCredentialType.call(this);
-	const fallbackType = primaryType === 'brainXApi' ? 'brainXBasicApi' : 'brainXApi';
-
-	// Try the credential type indicated by the authentication parameter.
-	// If unavailable, fall back to the other type — loadOptions may run before
-	// the parameter has been resolved to the correct value.
-	let credentials: IDataObject;
-	let isBasicAuth: boolean;
-	try {
-		credentials = await this.getCredentials(primaryType);
-		isBasicAuth = primaryType === 'brainXBasicApi';
-	} catch {
-		credentials = await this.getCredentials(fallbackType);
-		isBasicAuth = fallbackType === 'brainXBasicApi';
-	}
-
+	const credentials = await this.getCredentials('brainXApi');
 	const baseUrl = (credentials.baseUrl as string).replace(/\/+$/, '');
 
 	// Build URL + query string
@@ -219,7 +185,7 @@ export async function brainXApiRequest(
 		if (cached && Date.now() < cached.expiresAt) return cached.data;
 	}
 
-	const accessToken = await getAccessToken(baseUrl, credentials, isBasicAuth);
+	const accessToken = await getAccessToken(baseUrl, credentials);
 
 	const fetchInit: RequestInit = {
 		method,
