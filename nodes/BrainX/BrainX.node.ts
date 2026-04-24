@@ -365,6 +365,7 @@ export class BrainX implements INodeType {
 			async getEntities(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const operation = this.getCurrentNodeParameter('operation') as string;
 				const isWrite = operation === 'create' || operation === 'update';
+				const isRead = operation === 'search' || operation === 'get';
 
 				const response = (await brainXApiRequest.call(this, 'GET', '/api/metadata/entities')) as {
 					data?: BrainXEntity[];
@@ -373,6 +374,7 @@ export class BrainX implements INodeType {
 					.filter((e) => e.isEntity)
 					.filter((e) => 'Users' !== e.name)
 					.filter((e) => !isWrite || !e.isInventory || e.name === 'Potentials')
+					.filter((e) => !isRead || e.name !== 'EmailsLocal')
 					.map((e) => ({ name: e.label, value: e.id }))
 					.sort((a, b) => a.name.localeCompare(b.name));
 			},
