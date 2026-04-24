@@ -125,6 +125,12 @@ export class BrainX implements INodeType {
 						description: 'Create a new record',
 					},
 					{
+						name: 'Custom API Call',
+						value: 'customApiCall',
+						action: 'Make a custom API call',
+						description: 'Send an arbitrary request with the configured credentials',
+					},
+					{
 						name: 'Delete',
 						value: 'delete',
 						action: 'Delete a record',
@@ -168,7 +174,9 @@ export class BrainX implements INodeType {
 					loadOptionsMethod: 'getEntities',
 					loadOptionsDependsOn: ['operation'],
 				},
-				displayOptions: { hide: { operation: ['addRelations', 'getRelations'] } },
+				displayOptions: {
+					hide: { operation: ['addRelations', 'customApiCall', 'getRelations'] },
+				},
 				default: '',
 				description:
 					'The entity type to work with. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
@@ -199,6 +207,43 @@ export class BrainX implements INodeType {
 				placeholder: '1856, 1857, 1858',
 				description:
 					'Comma-separated list of record IDs to relate to this record. Brain X record IDs are globally unique, so the target entity is inferred by the server.',
+			},
+
+			// ── Custom API Call ───────────────────────────────────────────────
+			{
+				displayName: 'Method',
+				name: 'customMethod',
+				type: 'options',
+				displayOptions: { show: { operation: ['customApiCall'] } },
+				options: [
+					{ name: 'DELETE', value: 'DELETE' },
+					{ name: 'GET', value: 'GET' },
+					{ name: 'PATCH', value: 'PATCH' },
+					{ name: 'POST', value: 'POST' },
+				],
+				default: 'GET',
+			},
+			{
+				displayName: 'Endpoint',
+				name: 'customEndpoint',
+				type: 'string',
+				displayOptions: { show: { operation: ['customApiCall'] } },
+				default: '',
+				required: true,
+				placeholder: '/users/current',
+				description:
+					'Path to call relative to /api (e.g. /users/current → /api/users/current). /api/ is prepended automatically when missing. Include query string here if needed.',
+			},
+			{
+				displayName: 'Body',
+				name: 'customBody',
+				type: 'json',
+				typeOptions: { rows: 6 },
+				displayOptions: {
+					show: { operation: ['customApiCall'], customMethod: ['PATCH', 'POST'] },
+				},
+				default: '{}',
+				description: 'JSON body to send with the request',
 			},
 
 			// ── Fields (resourceMapper) ───────────────────────────────────────
@@ -571,8 +616,10 @@ export class BrainX implements INodeType {
 		const items = this.getInputData();
 		const returnData: IDataObject[] = [];
 
-		const entityId = this.getNodeParameter('resource', 0) as unknown as number;
 		const operation = this.getNodeParameter('operation', 0) as string;
+		// `resource` is hidden for customApiCall / addRelations / getRelations;
+		// supply a fallback so getNodeParameter doesn't throw when absent.
+		const entityId = this.getNodeParameter('resource', 0, 0) as unknown as number;
 
 		for (let i = 0; i < items.length; i++) {
 			try {
@@ -704,6 +751,38 @@ export class BrainX implements INodeType {
 						`/api/relations/${recordId}`,
 						{ records },
 					);
+					returnData.push(result);
+				} else if (operation === 'customApiCall') {
+					const method = this.getNodeParameter('customMethod', i) as string;
+					const rawEndpoint = (this.getNodeParameter('customEndpoint', i) as string).replace(
+						/^\/+/,
+						'',
+					);
+					const endpoint = rawEndpoint.startsWith('api/')
+						? `/${rawEndpoint}`
+						: `/api/${rawEndpoint}`;
+
+					let body: IDataObject = {};
+					if (method === 'POST' || method === 'PATCH') {
+						const raw = this.getNodeParameter('customBody', i) as string | IDataObject;
+						if (typeof raw === 'string') {
+							const trimmed = raw.trim();
+							if (trimmed.length) {
+								try {
+									body = JSON.parse(trimmed) as IDataObject;
+								} catch (e) {
+									throw new NodeOperationError(
+										this.getNode(),
+										`Custom API Call: body is not valid JSON — ${(e as Error).message}`,
+									);
+								}
+							}
+						} else if (raw && typeof raw === 'object') {
+							body = raw;
+						}
+					}
+
+					const result = await brainXApiRequest.call(this, method, endpoint, body);
 					returnData.push(result);
 				}
 			} catch (error) {
