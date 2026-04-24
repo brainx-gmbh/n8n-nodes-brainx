@@ -366,6 +366,7 @@ export class BrainX implements INodeType {
 				return (response.data ?? [])
 					.filter((e) => e.isEntity)
 					.filter((e) => 'Users' !== e.name)
+					.filter((e) => !e.isInventory || e.name === 'Potentials')
 					.map((e) => ({ name: e.label, value: e.id }))
 					.sort((a, b) => a.name.localeCompare(b.name));
 			},
