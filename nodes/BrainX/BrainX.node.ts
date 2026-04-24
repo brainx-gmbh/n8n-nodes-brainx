@@ -130,11 +130,14 @@ export class BrainX implements INodeType {
 			//   boolean        → toggle
 			// Required fields are marked with *.
 			// No "Value Type" selector needed — type is derived from the brainX metadata.
+			// Split into two parameters (createFields / updateFields) so switching
+			// operation clears the selection — n8n tracks resourceMapper state by
+			// parameter name.
 			{
 				displayName: 'Fields',
-				name: 'fieldsToSend',
+				name: 'createFields',
 				type: 'resourceMapper',
-				displayOptions: { show: { operation: ['create', 'update'] } },
+				displayOptions: { show: { operation: ['create'] } },
 				default: { mappingMode: 'defineBelow', value: null },
 				noDataExpression: true,
 				typeOptions: {
@@ -147,6 +150,24 @@ export class BrainX implements INodeType {
 					},
 				},
 				description: 'Select the fields to set. Required fields are marked with *.',
+			},
+			{
+				displayName: 'Fields',
+				name: 'updateFields',
+				type: 'resourceMapper',
+				displayOptions: { show: { operation: ['update'] } },
+				default: { mappingMode: 'defineBelow', value: null },
+				noDataExpression: true,
+				typeOptions: {
+					resourceMapper: {
+						resourceMapperMethod: 'getMappingColumns',
+						mode: 'add',
+						fieldWords: { singular: 'Field', plural: 'Fields' },
+						addAllFields: false,
+						multiKeyMatch: false,
+					},
+				},
+				description: 'Select the fields to update',
 			},
 
 			// ── Search: Limit ─────────────────────────────────────────────────
@@ -345,7 +366,8 @@ export class BrainX implements INodeType {
 				return (response.data ?? [])
 					.filter((e) => e.isEntity)
 					.filter((e) => 'Users' !== e.name)
-					.map((e) => ({ name: e.label, value: e.id }));
+					.map((e) => ({ name: e.label, value: e.id }))
+					.sort((a, b) => a.name.localeCompare(b.name));
 			},
 
 			async getFieldsToReturn(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
@@ -434,7 +456,7 @@ export class BrainX implements INodeType {
 		for (let i = 0; i < items.length; i++) {
 			try {
 				if (operation === 'create') {
-					const body = buildBody(this, i);
+					const body = buildBody(this, i, operation);
 					await validateRequiredFields.call(this, entityId, body);
 					const result = (await brainXApiRequest.call(
 						this,
@@ -517,7 +539,7 @@ export class BrainX implements INodeType {
 					returnData.push(...(result.data ?? []));
 				} else if (operation === 'update') {
 					const recordId = this.getNodeParameter('recordId', i) as string;
-					const body = buildBody(this, i);
+					const body = buildBody(this, i, operation);
 					const result = (await brainXApiRequest.call(
 						this,
 						'PATCH',
@@ -599,8 +621,9 @@ function buildRawQs(conditions: FilterCondition[], sortFields: SortField[]): str
 
 // ─── Build Request Body from resourceMapper ───────────────────────────────────
 
-function buildBody(ctx: IExecuteFunctions, i: number): IDataObject {
-	const fieldsToSend = ctx.getNodeParameter('fieldsToSend', i) as {
+function buildBody(ctx: IExecuteFunctions, i: number, operation: string): IDataObject {
+	const paramName = operation === 'create' ? 'createFields' : 'updateFields';
+	const fieldsToSend = ctx.getNodeParameter(paramName, i) as {
 		value: Record<string, string | number | boolean | null> | null;
 	};
 
