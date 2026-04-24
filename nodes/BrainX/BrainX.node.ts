@@ -3,9 +3,11 @@ import {
 	IExecuteFunctions,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
+	INodeProperties,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
+	NodeOperationError,
 	ResourceMapperField,
 	ResourceMapperFields,
 } from 'n8n-workflow';
@@ -22,6 +24,67 @@ import {
 	PICKLIST_TYPES,
 	validateRequiredFields,
 } from './GenericFunctions';
+
+// Row schema shared by createFiles/updateFiles. Brain X file payload shape:
+//   { [fieldName]: { name: string, content: string /* base64 */ } }
+const fileRowValues: INodeProperties[] = [
+	{
+		displayName: 'Field Name or ID',
+		name: 'field',
+		type: 'options',
+		typeOptions: {
+			loadOptionsMethod: 'getFileFields',
+			loadOptionsDependsOn: ['resource'],
+		},
+		default: '',
+		description:
+			'The File field to upload to. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+	},
+	{
+		displayName: 'Source',
+		name: 'source',
+		type: 'options',
+		options: [
+			{ name: 'Binary Data', value: 'binary' },
+			{ name: 'Base64 String', value: 'base64' },
+		],
+		default: 'binary',
+	},
+	{
+		displayName: 'Binary Property',
+		name: 'binaryProperty',
+		type: 'string',
+		displayOptions: { show: { source: ['binary'] } },
+		default: 'data',
+		description: 'Name of the binary property on the incoming item that holds the file',
+	},
+	{
+		displayName: 'Base64 Content',
+		name: 'base64Content',
+		type: 'string',
+		displayOptions: { show: { source: ['base64'] } },
+		default: '',
+		description: 'Base64-encoded file content',
+	},
+	{
+		displayName: 'MIME Type',
+		name: 'mimeType',
+		type: 'string',
+		displayOptions: { show: { source: ['base64'] } },
+		default: '',
+		placeholder: 'application/pdf',
+		description:
+			'MIME type of the file. Used to append a file extension to the file name if missing.',
+	},
+	{
+		displayName: 'File Name',
+		name: 'fileName',
+		type: 'string',
+		default: '',
+		description:
+			"Optional override for the file name. If empty and Source is Binary Data, the binary item's file name is used. Required when Source is Base64 String.",
+	},
+];
 
 export class BrainX implements INodeType {
 	description: INodeTypeDescription = {
@@ -154,6 +217,27 @@ export class BrainX implements INodeType {
 					},
 				},
 				description: 'Select the fields to update',
+			},
+
+			// ── File (create/update) ──────────────────────────────────────────
+			// One file per upload — the brainX API accepts a single file per request.
+			{
+				displayName: 'File',
+				name: 'createFiles',
+				type: 'fixedCollection',
+				displayOptions: { show: { operation: ['create'] } },
+				default: {},
+				placeholder: 'Add File',
+				options: [{ displayName: 'File', name: 'file', values: fileRowValues }],
+			},
+			{
+				displayName: 'File',
+				name: 'updateFiles',
+				type: 'fixedCollection',
+				displayOptions: { show: { operation: ['update'] } },
+				default: {},
+				placeholder: 'Add File',
+				options: [{ displayName: 'File', name: 'file', values: fileRowValues }],
 			},
 
 			// ── Search: Limit ─────────────────────────────────────────────────
@@ -386,6 +470,17 @@ export class BrainX implements INodeType {
 				}
 				return options.sort((a, b) => a.name.localeCompare(b.name));
 			},
+
+			async getFileFields(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const entityId = this.getCurrentNodeParameter('resource') as number;
+				if (!entityId) return [];
+
+				const fields = await fetchFields.call(this, entityId);
+				return fields
+					.filter((f) => f.type === 'File')
+					.map((f) => ({ name: f.label || f.name, value: f.name }))
+					.sort((a, b) => a.name.localeCompare(b.name));
+			},
 		},
 
 		// resourceMapping: feeds the resourceMapper with fields + their types + picklist options
@@ -452,7 +547,7 @@ export class BrainX implements INodeType {
 		for (let i = 0; i < items.length; i++) {
 			try {
 				if (operation === 'create') {
-					const body = buildBody(this, i, operation);
+					const body = await buildBody(this, i, operation);
 					await validateRequiredFields.call(this, entityId, body);
 					const result = (await brainXApiRequest.call(
 						this,
@@ -535,7 +630,7 @@ export class BrainX implements INodeType {
 					returnData.push(...(result.data ?? []));
 				} else if (operation === 'update') {
 					const recordId = this.getNodeParameter('recordId', i) as string;
-					const body = buildBody(this, i, operation);
+					const body = await buildBody(this, i, operation);
 					const result = (await brainXApiRequest.call(
 						this,
 						'PATCH',
@@ -629,8 +724,51 @@ function normalizeValue(value: unknown): unknown {
 	return value;
 }
 
-function buildBody(ctx: IExecuteFunctions, i: number, operation: string): IDataObject {
+// MIME types whose subtype differs from the conventional file extension.
+const MIME_EXT_OVERRIDES: Record<string, string> = {
+	'image/jpeg': 'jpg',
+	'image/svg+xml': 'svg',
+	'audio/mpeg': 'mp3',
+	'application/msword': 'doc',
+	'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+	'application/vnd.ms-excel': 'xls',
+	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+	'application/vnd.ms-powerpoint': 'ppt',
+	'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+};
+
+function extensionFromMimeType(mime: string | undefined): string | undefined {
+	if (!mime) return undefined;
+	const cleaned = mime.toLowerCase().split(';')[0].trim();
+	if (MIME_EXT_OVERRIDES[cleaned]) return MIME_EXT_OVERRIDES[cleaned];
+	// Generic fallback: use the subtype (image/png → png, image/svg+xml → svg).
+	const subtype = cleaned.split('/')[1]?.split('+')[0];
+	return subtype || undefined;
+}
+
+function ensureExtension(name: string, mime: string | undefined): string {
+	if (/\.[A-Za-z0-9]{1,5}$/.test(name)) return name;
+	const ext = extensionFromMimeType(mime);
+	return ext ? `${name}.${ext}` : name;
+}
+
+interface FileRow {
+	field: string;
+	source: 'binary' | 'base64';
+	binaryProperty?: string;
+	base64Content?: string;
+	mimeType?: string;
+	fileName?: string;
+}
+
+async function buildBody(
+	ctx: IExecuteFunctions,
+	i: number,
+	operation: string,
+): Promise<IDataObject> {
 	const paramName = operation === 'create' ? 'createFields' : 'updateFields';
+	const filesParamName = operation === 'create' ? 'createFiles' : 'updateFiles';
+
 	const fieldsToSend = ctx.getNodeParameter(paramName, i) as {
 		value: Record<string, string | number | boolean | null> | null;
 	};
@@ -642,6 +780,45 @@ function buildBody(ctx: IExecuteFunctions, i: number, operation: string): IDataO
 		if (value !== null && value !== undefined) {
 			body[key] = normalizeValue(value) as IDataObject[string];
 		}
+	}
+
+	const filesParam = ctx.getNodeParameter(filesParamName, i, {}) as {
+		file?: FileRow;
+	};
+	const row = filesParam.file;
+	if (row?.field) {
+		let content: string;
+		let defaultName: string | undefined;
+		let mimeType: string | undefined;
+
+		if (row.source === 'binary') {
+			const prop = row.binaryProperty || 'data';
+			const binary = ctx.helpers.assertBinaryData(i, prop);
+			const buffer = await ctx.helpers.getBinaryDataBuffer(i, prop);
+			content = buffer.toString('base64');
+			defaultName = binary.fileName;
+			mimeType = binary.mimeType;
+		} else {
+			content = row.base64Content ?? '';
+			if (!content) {
+				throw new NodeOperationError(
+					ctx.getNode(),
+					`File field "${row.field}": Base64 Content is empty`,
+				);
+			}
+			mimeType = row.mimeType || undefined;
+		}
+
+		const rawName = row.fileName || defaultName;
+		if (!rawName) {
+			throw new NodeOperationError(
+				ctx.getNode(),
+				`File field "${row.field}": file name is required (no binary file name and no override supplied)`,
+			);
+		}
+		const name = ensureExtension(rawName, mimeType);
+
+		body[row.field] = { name, content };
 	}
 
 	return body;
