@@ -110,16 +110,21 @@ async function getEntityIdByName(
 
 // ─── Token Cache ─────────────────────────────────────────────────────────────
 // Keyed by baseUrl + username so each user gets one token reused across calls.
-// Refreshed 5 min before assumed expiry to avoid mid-flight invalidation.
+// Kept short so the cached token is unlikely to outlive its server-side TTL;
+// any gap is covered by the retry-on-401 in brainXApiRequest.
 
 interface Cached<T> {
 	data: T;
 	expiresAt: number;
 }
-const TOKEN_TTL_MS = 55 * 60 * 1000; // 55 min (assumes ≥1 h server-side lifetime)
+const TOKEN_TTL_MS = 15 * 60 * 1000; // 15 min preemptive refresh
 const GET_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min for GET responses (metadata, records)
 const tokenCache = new Map<string, Cached<string>>();
 const getCache = new Map<string, Cached<IDataObject>>();
+
+function tokenCacheKey(baseUrl: string, username: string): string {
+	return `${baseUrl}\x00${username}`;
+}
 
 // ─── Generic API Request ──────────────────────────────────────────────────────
 // Uses fetch directly (same as credentials) to avoid n8n context limitations
@@ -149,7 +154,7 @@ async function fetchAccessToken(baseUrl: string, credentials: IDataObject): Prom
 }
 
 async function getAccessToken(baseUrl: string, credentials: IDataObject): Promise<string> {
-	const cacheKey = `${baseUrl}\x00${String(credentials.username)}`;
+	const cacheKey = tokenCacheKey(baseUrl, String(credentials.username));
 	const cached = tokenCache.get(cacheKey);
 	if (cached && Date.now() < cached.expiresAt) return cached.data;
 
@@ -185,20 +190,30 @@ export async function brainXApiRequest(
 		if (cached && Date.now() < cached.expiresAt) return cached.data;
 	}
 
-	const accessToken = await getAccessToken(baseUrl, credentials);
-
-	const fetchInit: RequestInit = {
-		method,
-		headers: {
-			'Content-Type': 'application/vnd.brainformatik.crm-v2+json',
-			Authorization: `Bearer ${accessToken}`,
-		},
+	const buildInit = (accessToken: string): RequestInit => {
+		const init: RequestInit = {
+			method,
+			headers: {
+				'Content-Type': 'application/vnd.brainformatik.crm-v2+json',
+				Authorization: `Bearer ${accessToken}`,
+			},
+		};
+		if (Object.keys(body).length) {
+			init.body = JSON.stringify(body);
+		}
+		return init;
 	};
-	if (Object.keys(body).length) {
-		fetchInit.body = JSON.stringify(body);
+
+	// Execute with cached token; on 401, evict + retry once with a fresh token.
+	// Covers server-side invalidation (restart, manual revoke, shorter TTL than assumed).
+	let fetchInit = buildInit(await getAccessToken(baseUrl, credentials));
+	let res = await fetch(fullUrl, fetchInit);
+	if (res.status === 401) {
+		tokenCache.delete(tokenCacheKey(baseUrl, String(credentials.username)));
+		fetchInit = buildInit(await getAccessToken(baseUrl, credentials));
+		res = await fetch(fullUrl, fetchInit);
 	}
 
-	const res = await fetch(fullUrl, fetchInit);
 	if (!res.ok) {
 		const errorBody = await res.text().catch(() => '');
 		throw new Error(
