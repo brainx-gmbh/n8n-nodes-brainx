@@ -7,6 +7,7 @@ import {
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
+	NodeConnectionTypes,
 	NodeOperationError,
 	ResourceMapperField,
 	ResourceMapperFields,
@@ -96,8 +97,8 @@ export class BrainX implements INodeType {
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description: 'Interact with the brainX APP',
 		defaults: { name: 'brainX' },
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionTypes.Main],
+		outputs: [NodeConnectionTypes.Main],
 		credentials: [
 			{
 				name: 'brainXApi',
@@ -143,6 +144,19 @@ export class BrainX implements INodeType {
 						description: 'Retrieve a record by ID, or list all if no ID given',
 					},
 					{
+						name: 'Get Companies',
+						value: 'getCompanies',
+						action: 'Get accessible companies',
+						description:
+							'List companies the current user has access to. The available companies are configured per role under user settings.',
+					},
+					{
+						name: 'Get Current User',
+						value: 'getCurrentUser',
+						action: 'Get current user',
+						description: 'Retrieve information about the currently logged-in user',
+					},
+					{
 						name: 'Get Relations',
 						value: 'getRelations',
 						action: 'Get relations of a record',
@@ -175,7 +189,15 @@ export class BrainX implements INodeType {
 					loadOptionsDependsOn: ['operation'],
 				},
 				displayOptions: {
-					hide: { operation: ['addRelations', 'customApiCall', 'getRelations'] },
+					hide: {
+						operation: [
+							'addRelations',
+							'customApiCall',
+							'getCompanies',
+							'getCurrentUser',
+							'getRelations',
+						],
+					},
 				},
 				default: '',
 				description:
@@ -752,6 +774,16 @@ export class BrainX implements INodeType {
 						{ records },
 					);
 					returnData.push(result);
+				} else if (operation === 'getCurrentUser') {
+					const result = (await brainXApiRequest.call(this, 'GET', '/api/users/current')) as {
+						data?: IDataObject;
+					};
+					returnData.push(result.data ?? result);
+				} else if (operation === 'getCompanies') {
+					const result = (await brainXApiRequest.call(this, 'GET', '/api/users/companies')) as {
+						data?: IDataObject[];
+					};
+					returnData.push(...(result.data ?? []));
 				} else if (operation === 'customApiCall') {
 					const method = this.getNodeParameter('customMethod', i) as string;
 					const rawEndpoint = (this.getNodeParameter('customEndpoint', i) as string).replace(

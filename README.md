@@ -14,9 +14,11 @@ Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes
 
 ## Operations
 
-All operations work against dynamically loaded **modules** (entities) from your brainX instance.
+Most operations work against dynamically loaded **modules** (entities) from your brainX instance. A few operations target the user/account context instead and don't require a module selection.
 
-- **Create** - Create a new record. Required fields are enforced based on module metadata.
+### Record operations
+
+- **Create** - Create a new record. Required fields are enforced based on module metadata. Supports uploading a file into a File field.
 - **Delete** - Delete a record by ID.
 - **Get** - Retrieve a single record by ID, or list all records if no ID is given.
   - Options: Include Deleted, Include File Content
@@ -25,7 +27,21 @@ All operations work against dynamically loaded **modules** (entities) from your 
   - **Sort Order** - Sort by one or more fields in ascending or descending order.
   - **Fields to Return** - Select specific fields to include in the response.
   - Options: Include Deleted, Include File Content, Offset, Filter Combine With OR
-- **Update** - Update an existing record by ID. No required fields are enforced.
+- **Update** - Update an existing record by ID. No required fields are enforced. Supports uploading a file into a File field.
+
+### Relation operations
+
+- **Add Relations** - Relate one or more existing records to a given record (record IDs are globally unique, so the target entity is inferred by the server).
+- **Get Relations** - List related records of a given record, grouped by entity.
+
+### User / account operations
+
+- **Get Current User** - Retrieve information about the currently logged-in user (`/api/users/current`).
+- **Get Companies** - List companies the current user has access to (`/api/users/companies`). The available companies are configured per role under user settings by a privileged user.
+
+### Escape hatch
+
+- **Custom API Call** - Send an arbitrary request (GET/POST/PATCH/DELETE) using the configured credentials. The `/api/` prefix is added automatically when missing.
 
 Field types (text, picklist, date, boolean, references) are automatically mapped from brainX metadata, with dropdown options loaded for picklist and reference fields.
 
@@ -52,6 +68,15 @@ Tested with n8n version 1.x. Requires Node.js 18+ (uses native `fetch`).
 - [brainX website](https://www.brainx.app/)
 
 ## Version history
+
+### 0.2.0
+
+- Added **Get Current User** operation (`/api/users/current`).
+- Added **Get Companies** operation (`/api/users/companies`).
+- Added **Add Relations** and **Get Relations** operations.
+- Added **Custom API Call** operation for arbitrary requests.
+- Added file upload support for Create and Update operations.
+- Fixed creating Potentials by sending the required currency/language/tax/discount fields.
 
 ### 0.1.0
 
