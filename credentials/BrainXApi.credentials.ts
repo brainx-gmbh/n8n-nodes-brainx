@@ -8,7 +8,7 @@ import type {
 
 export class BrainXApi implements ICredentialType {
 	name = 'brainXApi';
-	displayName = 'BrainX API with API Password API';
+	displayName = 'brainX API';
 	icon = 'file:../nodes/BrainX/brainx.svg' as const;
 	documentationUrl = 'https://brainx.app';
 	properties: INodeProperties[] = [

@@ -7,6 +7,8 @@ import {
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
+	JsonObject,
+	NodeApiError,
 	NodeConnectionTypes,
 	NodeOperationError,
 	ResourceMapperField,
@@ -259,13 +261,35 @@ export class BrainX implements INodeType {
 			{
 				displayName: 'Body',
 				name: 'customBody',
-				type: 'json',
-				typeOptions: { rows: 6 },
+				type: 'fixedCollection',
+				typeOptions: { multipleValues: true },
 				displayOptions: {
 					show: { operation: ['customApiCall'], customMethod: ['PATCH', 'POST'] },
 				},
-				default: '{}',
-				description: 'JSON body to send with the request',
+				default: {},
+				placeholder: 'Add Field',
+				options: [
+					{
+						displayName: 'Field',
+						name: 'fields',
+						values: [
+							{
+								displayName: 'Key',
+								name: 'key',
+								type: 'string',
+								default: '',
+								description: 'Name of the body field',
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+								description: 'Value of the body field',
+							},
+						],
+					},
+				],
 			},
 
 			// ── Fields (resourceMapper) ───────────────────────────────────────
@@ -794,23 +818,13 @@ export class BrainX implements INodeType {
 						? `/${rawEndpoint}`
 						: `/api/${rawEndpoint}`;
 
-					let body: IDataObject = {};
+					const body: IDataObject = {};
 					if (method === 'POST' || method === 'PATCH') {
-						const raw = this.getNodeParameter('customBody', i) as string | IDataObject;
-						if (typeof raw === 'string') {
-							const trimmed = raw.trim();
-							if (trimmed.length) {
-								try {
-									body = JSON.parse(trimmed) as IDataObject;
-								} catch (e) {
-									throw new NodeOperationError(
-										this.getNode(),
-										`Custom API Call: body is not valid JSON — ${(e as Error).message}`,
-									);
-								}
-							}
-						} else if (raw && typeof raw === 'object') {
-							body = raw;
+						const bodyData = this.getNodeParameter('customBody', i) as {
+							fields?: Array<{ key: string; value: unknown }>;
+						};
+						for (const { key, value } of bodyData.fields ?? []) {
+							if (key) body[key] = value as IDataObject[string];
 						}
 					}
 
@@ -822,7 +836,7 @@ export class BrainX implements INodeType {
 					returnData.push({ error: (error as Error).message });
 					continue;
 				}
-				throw error;
+				throw new NodeApiError(this.getNode(), error as JsonObject);
 			}
 		}
 

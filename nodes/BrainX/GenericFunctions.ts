@@ -7,7 +7,7 @@ import {
 
 type BrainXContext = IExecuteFunctions | ILoadOptionsFunctions;
 
-// ─── BrainX API Types ─────────────────────────────────────────────────────────
+// ─── brainX API Types ─────────────────────────────────────────────────────────
 
 export interface BrainXEntity {
 	id: number;
@@ -39,28 +39,9 @@ export interface BrainXField {
 	type: string;
 	required?: boolean;
 	editable?: boolean;
-	refEntities?: string[];
-	refEntity?: string;
 	values?: BrainXPicklistValue[] | Record<string, string>;
 	options?: BrainXPicklistValue[] | Record<string, string>;
 	items?: BrainXPicklistValue[] | Record<string, string>;
-}
-
-export interface BrainXRecord {
-	id: number;
-	recordName?: string; // present in list responses only
-	[key: string]: unknown;
-}
-
-interface BrainXRecordsResponse {
-	data: BrainXRecord[];
-	metadata: {
-		total: number;
-		actual: number;
-		editable: number[];
-		deletable: number[];
-		deleted: number[];
-	};
 }
 
 export interface BrainXSingleRecordResponse {
@@ -90,23 +71,11 @@ export const PICKLIST_TYPES = [
 	'LanguagePickList',
 	'UsersGroupsReference',
 	'RoleReference',
-	'Reference',
-	'CompanyReference',
 ];
+const REFERENCE_TYPES = ['Reference', 'CompanyReference'];
 export const DATE_TYPES = ['DateTime'];
 export const BOOL_TYPES = ['Checkbox'];
 const HIDDEN_TYPES = ['File', 'Image', 'Password', 'TaxClass', 'ModuleFieldType'];
-
-async function getEntityIdByName(
-	this: BrainXContext,
-	entityName: string,
-): Promise<number | undefined> {
-	const response = (await brainXApiRequest.call(this, 'GET', '/api/metadata/entities')) as {
-		data?: BrainXEntity[];
-	};
-	// Don't filter by isEntity — reference fields can point to system modules (e.g. Currencies)
-	return (response.data ?? []).find((e) => e.name === entityName)?.id;
-}
 
 async function getEntityNameById(
 	this: BrainXContext,
@@ -167,14 +136,14 @@ async function fetchAccessToken(baseUrl: string, credentials: IDataObject): Prom
 	});
 
 	if (!authRes.ok) {
-		throw new Error(`BrainX authentication failed (${authRes.status}): ${authRes.statusText}`);
+		throw new Error(`brainX authentication failed (${authRes.status}): ${authRes.statusText}`);
 	}
 
 	const json = (await authRes.json()) as Record<string, unknown>;
 	const token = (json.accessToken ??
 		(json.data as Record<string, unknown> | undefined)?.accessToken) as string | undefined;
 	if (!token) {
-		throw new Error(`BrainX authentication: unexpected response – ${JSON.stringify(json)}`);
+		throw new Error(`brainX authentication: unexpected response – ${JSON.stringify(json)}`);
 	}
 	return token;
 }
@@ -243,7 +212,7 @@ export async function brainXApiRequest(
 	if (!res.ok) {
 		const errorBody = await res.text().catch(() => '');
 		throw new Error(
-			`BrainX API error ${res.status}: ${res.statusText} | body: ${errorBody} | request: ${fetchInit.body ?? '(none)'}`,
+			`brainX API error ${res.status}: ${res.statusText} | body: ${errorBody} | request: ${fetchInit.body ?? '(none)'}`,
 		);
 	}
 
@@ -266,6 +235,9 @@ export async function fetchFields(this: BrainXContext, entityId: number): Promis
 	if (!fields) {
 		throw new Error(`fetchFields: unexpected response shape – ${JSON.stringify(metadata)}`);
 	}
+	for (const f of fields) {
+		if (typeof f.label === 'string') f.label = f.label.trim();
+	}
 	return fields;
 }
 
@@ -280,6 +252,7 @@ export function mapBrainXType(brainXType: string): string {
 	if (brainXType === 'Number' || brainXType === 'Currency' || brainXType === 'Percentage') {
 		return 'number';
 	}
+	if (REFERENCE_TYPES.includes(brainXType)) return 'number';
 	if (PICKLIST_TYPES.includes(brainXType)) return 'options';
 	if (DATE_TYPES.includes(brainXType)) return 'dateTime';
 	if (BOOL_TYPES.includes(brainXType)) return 'boolean';
@@ -293,20 +266,6 @@ export async function getPicklistOptionsForMapper(
 	this: BrainXContext,
 	field: BrainXField,
 ): Promise<Array<{ name: string; value: string | number | boolean }>> {
-	if (field.type === 'Reference') {
-		const refs: string[] = Array.isArray(field.refEntities)
-			? field.refEntities
-			: field.refEntity
-				? [field.refEntity]
-				: [];
-		return loadReferenceOptions.call(this, refs);
-	}
-
-	if (field.type === 'CompanyReference') {
-		return loadCompaniesOptions.call(this);
-	}
-
-	// Standard PickList / MultiPickList / LanguagePickList
 	const rawValues = field.values ?? field.options ?? field.items ?? [];
 
 	if (Array.isArray(rawValues)) {
@@ -328,39 +287,6 @@ export async function getPicklistOptionsForMapper(
 	}
 
 	return [];
-}
-
-// ─── Internal Reference / Users Loaders ───────────────────────────────────────
-
-export async function loadReferenceOptions(
-	this: BrainXContext,
-	refEntities: string[],
-): Promise<Array<{ name: string; value: string }>> {
-	const results: Array<{ name: string; value: string }> = [];
-
-	for (const refEntity of refEntities) {
-		const entityId = await getEntityIdByName.call(this, refEntity);
-		if (!entityId) continue;
-		const response = (await brainXApiRequest.call(
-			this,
-			'GET',
-			`/api/entity/${entityId}/records`,
-		)) as unknown as BrainXRecordsResponse;
-		for (const r of response.data ?? []) {
-			results.push({ name: r.recordName ?? String(r.id), value: String(r.id) });
-		}
-	}
-
-	return results;
-}
-
-export async function loadCompaniesOptions(
-	this: BrainXContext,
-): Promise<Array<{ name: string; value: string }>> {
-	const response = (await brainXApiRequest.call(this, 'GET', '/api/users/companies')) as {
-		data?: Array<{ id: string | number; name: string }>;
-	};
-	return (response.data ?? []).map((c) => ({ name: c.name, value: String(c.id) }));
 }
 
 // ─── Required Field Validation ────────────────────────────────────────────────

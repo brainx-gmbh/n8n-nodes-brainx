@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.3.0]
+
+### Changed
+
+- Custom API Call body is now a Key/Value field collection instead of a JSON text input, making it easier to compose request bodies without escaping JSON.
+- Reference fields (`Reference`, `CompanyReference`) are now plain number inputs instead of fetched dropdowns. This avoids extra API roundtrips and makes it simpler to pass IDs from upstream nodes.
+- Credential display name simplified to `brainX API`.
+- Brand spelling normalized to lowercase `brainX` in user-facing strings (display names, error messages).
+
+### Fixed
+
+- Field labels are trimmed before sorting, so fields whose API label has leading whitespace (e.g. `Lieferung: PLZ`) no longer appear at the top of the list.
+
 ## [0.2.0]
 
 ### Added
