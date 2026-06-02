@@ -55,7 +55,7 @@ This node authenticates using an **API Password**. You will need:
 
 ## Compatibility
 
-Tested with n8n version 1.x. Requires Node.js 18+ (uses native `fetch`).
+Tested with n8n 2.17.x on Node.js 24.x. Requires Node.js 22+ (matching n8n's own requirement).
 
 ## Resources
 
