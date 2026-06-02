@@ -47,16 +47,11 @@ Field types (text, picklist, date, boolean, references) are automatically mapped
 
 ## Credentials
 
-This node supports two authentication methods:
+This node authenticates using an **API Password**. You will need:
 
-- **API Password** - Authenticate using your brainX username and API password.
-- **Basic Auth** - Authenticate using your brainX username and user password.
-
-Both methods require:
-
-1. **Base URL** - The URL of your brainX instance (e.g. `https://your-instance.brainx.app`)
+1. **Base URL** - The URL of your brainX instance
 2. **Username** - Your brainX username
-3. **Password** - Either your API password or user password, depending on the method chosen
+3. **API Password** - Your brainX API password
 
 ## Compatibility
 
@@ -68,6 +63,14 @@ Tested with n8n version 1.x. Requires Node.js 18+ (uses native `fetch`).
 - [brainX website](https://www.brainx.app/)
 
 ## Version history
+
+### 0.3.0
+
+- Changed **Custom API Call** body to a Key/Value field collection instead of a JSON text input, making it easier to compose request bodies without escaping JSON.
+- Changed reference fields (`Reference`, `CompanyReference`) to plain number inputs instead of fetched dropdowns. This avoids extra API roundtrips and makes it simpler to pass IDs from upstream nodes.
+- Simplified credential display name to `brainX API`.
+- Normalized brand spelling to lowercase `brainX` in user-facing strings (display names, error messages).
+- Fixed field label sorting so fields whose API label has leading whitespace (e.g. `Lieferung: PLZ`) no longer appear at the top of the list.
 
 ### 0.2.0
 
