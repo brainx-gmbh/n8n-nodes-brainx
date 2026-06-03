@@ -788,6 +788,7 @@ export class BrainX implements INodeType {
 						throw new NodeOperationError(
 							this.getNode(),
 							'Related Record IDs must contain at least one numeric ID',
+							{ itemIndex: i },
 						);
 					}
 
@@ -836,7 +837,7 @@ export class BrainX implements INodeType {
 					returnData.push({ error: (error as Error).message });
 					continue;
 				}
-				throw new NodeApiError(this.getNode(), error as JsonObject);
+				throw new NodeApiError(this.getNode(), error as JsonObject, { itemIndex: i });
 			}
 		}
 
