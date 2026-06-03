@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-brainx",
-	"version": "0.3.2",
+	"version": "0.3.6",
 	"description": "n8n community node for brainX systems",
 	"license": "MIT",
 	"homepage": "https://www.brainx.app/",
