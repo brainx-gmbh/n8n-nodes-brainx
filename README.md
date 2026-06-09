@@ -64,6 +64,12 @@ Tested with n8n 2.17.x on Node.js 24.x. Requires Node.js 22+ (matching n8n's own
 
 ## Version history
 
+### [0.3.9]
+
+- NPM Publish
+- Update Version
+
+
 ### 0.3.0
 
 - Changed **Custom API Call** body to a Key/Value field collection instead of a JSON text input, making it easier to compose request bodies without escaping JSON.
