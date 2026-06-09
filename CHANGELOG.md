@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.3.9]
+
+### Added
+
+- NPM Publish
+- Update Version
+
 ## [0.3.0]
 
 ### Changed
