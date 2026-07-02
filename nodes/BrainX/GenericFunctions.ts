@@ -113,9 +113,7 @@ interface Cached<T> {
 	expiresAt: number;
 }
 const TOKEN_TTL_MS = 15 * 60 * 1000; // 15 min preemptive refresh
-const GET_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min for GET responses (metadata, records)
 const tokenCache = new Map<string, Cached<string>>();
-const getCache = new Map<string, Cached<IDataObject>>();
 
 function tokenCacheKey(baseUrl: string, username: string): string {
 	return `${baseUrl}\x00${username}`;
@@ -179,12 +177,6 @@ export async function brainXApiRequest(
 		fullUrl += (fullUrl.includes('?') ? '&' : '?') + rawQs;
 	}
 
-	// Return cached response for GET requests (metadata, records, etc.)
-	if (method === 'GET') {
-		const cached = getCache.get(fullUrl);
-		if (cached && Date.now() < cached.expiresAt) return cached.data;
-	}
-
 	const buildInit = (accessToken: string): RequestInit => {
 		const init: RequestInit = {
 			method,
@@ -216,13 +208,7 @@ export async function brainXApiRequest(
 		);
 	}
 
-	const result = (await res.json()) as IDataObject;
-
-	if (method === 'GET') {
-		getCache.set(fullUrl, { data: result, expiresAt: Date.now() + GET_CACHE_TTL_MS });
-	}
-
-	return result;
+	return (await res.json()) as IDataObject;
 }
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────
